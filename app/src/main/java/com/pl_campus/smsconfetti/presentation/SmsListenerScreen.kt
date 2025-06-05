@@ -1,7 +1,6 @@
 package com.pl_campus.smsconfetti.presentation
 
 import android.Manifest
-import android.content.Context
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.provider.Telephony
@@ -20,12 +19,31 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.SideEffect
-import coil.ImageLoader
-import coil.compose.AsyncImage
-import coil.decode.GifDecoder
-import coil.decode.ImageDecoderDecoder
-import coil.request.ImageRequest
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.launch
+import kotlin.random.Random
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
+import androidx.compose.material3.Surface
+import androidx.compose.runtime.*
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
+import kotlinx.coroutines.delay
+import androidx.compose.ui.graphics.Path
+import com.pl_campus.smsconfetti.utils.ShapeState
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import com.pl_campus.smsconfetti.R
+import com.pl_campus.smsconfetti.utils.FallingShape
+
 
 @Composable
 fun SmsListenerScreen(modifier: Modifier = Modifier) {
@@ -44,7 +62,6 @@ fun SmsListenerScreen(modifier: Modifier = Modifier) {
     )
 
 
-
     var receiver by remember {
         mutableStateOf(false)
     }
@@ -57,7 +74,7 @@ fun SmsListenerScreen(modifier: Modifier = Modifier) {
     }
 
     if(receiver){
-        GifAnimationFromFile(modifier, context)
+        StaggeredFallAnimationScreen()
     }
 
 
@@ -111,26 +128,115 @@ fun SmsListenerScreen(modifier: Modifier = Modifier) {
     }
 }
 
+
+
+
 @Composable
-fun GifAnimationFromFile(modifier: Modifier = Modifier, context: Context) {
-    val imageLoader = remember {
-        ImageLoader.Builder(context)
-            .components {
-                // Add GIF decoder
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
-                    add(ImageDecoderDecoder.Factory())
-                } else {
-                    add(GifDecoder.Factory())
+fun StaggeredFallAnimationScreen() {
+    val numberOfShapes: Int = 150
+    val shapes = remember { mutableStateListOf<FallingShape>() }
+    var screenWidthPx by remember { mutableStateOf(0f) }
+    var screenHeightPx by remember { mutableStateOf(0f) }
+    var triggerFall by remember { mutableStateOf(0) } // Change to trigger re-fall
+
+    val density = LocalDensity.current
+    val shapeSize = 15.dp
+    val shapeSizePx = with(density) { shapeSize.toPx() }
+
+    // Initialize or re-initialize shapes when screen dimensions are known or trigger changes
+    LaunchedEffect(screenWidthPx, screenHeightPx, triggerFall) {
+        if (screenWidthPx == 0f || screenHeightPx == 0f) return@LaunchedEffect
+
+        shapes.clear() // Clear previous shapes for re-fall
+        for (i in 0 until numberOfShapes) {
+            shapes.add(
+                FallingShape(
+                    id = i,
+                    color = Color(Random.nextInt(256), Random.nextInt(256), Random.nextInt(256)),
+                    initialXOffsetPx = (Random.nextFloat() * (screenWidthPx - shapeSizePx)),
+                    animatableY = Animatable(-shapeSizePx), // Start above the screen,
+                    shapeState = ShapeState.entries.toTypedArray().random()
+                )
+            )
+        }
+
+        // Coroutine to manage the staggered fall
+        launch {
+            shapes.forEachIndexed { index, shape ->
+                if (!shape.hasStartedFalling) { // Ensure it only starts once per trigger
+
+                    launch { // Launch a new coroutine for each shape's animation
+                        val theDelayBetweenShapesMs: Long = (0..40).random().toLong()
+                        delay(index * theDelayBetweenShapesMs) // Stagger the start
+                        shape.hasStartedFalling = true
+                        shape.animatableY.animateTo(
+                            targetValue = screenHeightPx, // Fall to the bottom edge (or slightly beyond)
+                            animationSpec = tween(
+                                durationMillis = Random.nextInt(1000, 1500), // Random fall duration
+                                easing = LinearEasing
+                            )
+                        )
+                        // Optionally, reset or remove the shape after it falls
+                        // For this example, they just stay at the bottom
+                    }
                 }
             }
-            .build()
+        }
     }
-    AsyncImage(
-        model = ImageRequest.Builder(context)
-            .data(R.drawable.cong_file)
-            .build(),
-        contentDescription = "My Animated GIF",
-        imageLoader = imageLoader,
-        modifier.fillMaxSize()
-    )
+
+    Surface(
+        modifier = Modifier
+            .fillMaxSize()
+            .onSizeChanged {
+                screenWidthPx = it.width.toFloat()
+                screenHeightPx = it.height.toFloat()
+            }
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            Image(
+                painter = painterResource(id = R.drawable.congratulations),
+                contentDescription = "Full Screen Background Image", // Provide a meaningful description
+                modifier = Modifier.fillMaxSize(), // Make the Image fill its parent Box
+                contentScale = ContentScale.FillBounds // Or ContentScale.FillBounds, ContentScale.Fit
+            )
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                shapes.forEach { shape ->
+                    when(shape.shapeState){
+                        ShapeState.RECTANGLE -> {
+                            drawRect(
+                                color = shape.color,
+                                topLeft = Offset(shape.initialXOffsetPx, shape.animatableY.value),
+                                size = Size(shapeSizePx, shapeSizePx)
+                            )
+                        }
+                        ShapeState.CIRCLE -> {
+                            drawCircle(
+                                color = shape.color,
+                                center = Offset(shape.initialXOffsetPx, shape.animatableY.value + shapeSizePx),
+                                radius = shapeSizePx/2
+                            )
+                        }
+                        ShapeState.TRIANGLE -> {
+                            val point1 = Offset(shape.initialXOffsetPx + shapeSizePx , shapeSizePx / 2 + shape.animatableY.value + shapeSizePx)             // Top point
+                            val point2 = Offset(shape.initialXOffsetPx + shapeSizePx / 2, shapeSizePx * 6 / 4 + shape.animatableY.value + shapeSizePx)         // Bottom-left point
+                            val point3 = Offset(shape.initialXOffsetPx + shapeSizePx * 6 / 4, shapeSizePx * 6 / 4 + shape.animatableY.value + shapeSizePx)     // Bottom-right point
+
+                            // Create a Path object
+                            val trianglePath = Path().apply {
+                                moveTo(point1.x, point1.y) // Move to the first point
+                                lineTo(point2.x, point2.y) // Draw a line to the second point
+                                lineTo(point3.x, point3.y) // Draw a line to the third point
+                                close() // Close the path to connect the last point to the first
+                            }
+                            drawPath(
+                                path = trianglePath,
+                                color =shape.color
+                            )
+                        }
+                    }
+                }
+            }
+
+        }
+    }
 }
