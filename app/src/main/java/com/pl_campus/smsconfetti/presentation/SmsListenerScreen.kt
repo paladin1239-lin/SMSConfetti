@@ -39,6 +39,7 @@ import androidx.compose.ui.graphics.Path
 import com.pl_campus.smsconfetti.utils.ShapeState
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import com.pl_campus.smsconfetti.R
@@ -203,11 +204,21 @@ fun StaggeredFallAnimationScreen() {
                 shapes.forEach { shape ->
                     when(shape.shapeState){
                         ShapeState.RECTANGLE -> {
-                            drawRect(
-                                color = shape.color,
-                                topLeft = Offset(shape.initialXOffsetPx, shape.animatableY.value),
-                                size = Size(shapeSizePx, shapeSizePx)
+                            val rectTopLeft = Offset(shape.initialXOffsetPx, shape.animatableY.value)
+                            val rectSize = Size(shapeSizePx, shapeSizePx)
+                            val pivotPoint = Offset(
+                                x = rectTopLeft.x + rectSize.width / 2,
+                                y = rectTopLeft.y + rectSize.height / 2
                             )
+                            val degree = ((shape.animatableY.value/10) % 360).toFloat()
+                            rotate(degrees = degree, pivot = pivotPoint){
+                                drawRect(
+                                    color = shape.color,
+                                    topLeft = rectTopLeft,
+                                    size = rectSize
+                                    )
+                            }
+
                         }
                         ShapeState.CIRCLE -> {
                             drawCircle(
@@ -217,9 +228,16 @@ fun StaggeredFallAnimationScreen() {
                             )
                         }
                         ShapeState.TRIANGLE -> {
+                            val degree = ((shape.animatableY.value/10) % 360).toFloat()
                             val point1 = Offset(shape.initialXOffsetPx + shapeSizePx , shapeSizePx / 2 + shape.animatableY.value + shapeSizePx)             // Top point
                             val point2 = Offset(shape.initialXOffsetPx + shapeSizePx / 2, shapeSizePx * 6 / 4 + shape.animatableY.value + shapeSizePx)         // Bottom-left point
                             val point3 = Offset(shape.initialXOffsetPx + shapeSizePx * 6 / 4, shapeSizePx * 6 / 4 + shape.animatableY.value + shapeSizePx)     // Bottom-right point
+
+
+                            val pivotPoint = Offset(
+                                x = (point1.x + point2.x + point3.x)/3 ,
+                                y = (point1.y + point2.y + point3.y)/3
+                            )
 
                             // Create a Path object
                             val trianglePath = Path().apply {
@@ -228,10 +246,14 @@ fun StaggeredFallAnimationScreen() {
                                 lineTo(point3.x, point3.y) // Draw a line to the third point
                                 close() // Close the path to connect the last point to the first
                             }
-                            drawPath(
-                                path = trianglePath,
-                                color =shape.color
-                            )
+
+                            rotate(degrees = degree, pivot = pivotPoint){
+                                drawPath(
+                                    path = trianglePath,
+                                    color =shape.color
+                                )
+                            }
+
                         }
                     }
                 }
